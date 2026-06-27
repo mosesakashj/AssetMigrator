@@ -1,11 +1,13 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Html5Qrcode } from 'html5-qrcode'
+import { Camera } from 'lucide-react'
 import { MOCK_BARCODE_DB } from '../../types/asset'
 import { analyzeAssetPhoto } from '../../services/aiService'
 import type { AssetFields, AIRecognitionResult } from '../../types/asset'
 
 export interface UnifiedCaptureHandle {
   triggerCapture: () => void
+  resetPhoto: () => void
 }
 
 interface Props {
@@ -24,6 +26,7 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
   const [scanError, setScanError] = useState('')
   const [analyzing, setAnalyzing] = useState(false)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [flash, setFlash] = useState(false)
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const SCANNER_DIV = 'unified-scanner-div'
@@ -60,35 +63,67 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
     }
   }
 
-  async function handlePhotoFile(file: File) {
+  async function processPhoto(base64: string, mimeType = 'image/jpeg') {
+    setAnalyzing(true)
+    try {
+      const result = await analyzeAssetPhoto(base64, mimeType as 'image/jpeg')
+      onPhotoResult(result, base64)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'AI analysis failed'
+      onPhotoError(msg.includes('API_KEY') ? 'Add VITE_ANTHROPIC_API_KEY to .env to enable AI.' : msg)
+    } finally {
+      setAnalyzing(false)
+      // keep photoPreview set so the image stays visible
+    }
+  }
+
+  function retakePhoto() {
+    setPhotoPreview(null)
+  }
+
+  function captureFromVideoFeed(): boolean {
+    const video = document.querySelector(`#${SCANNER_DIV} video`) as HTMLVideoElement | null
+    if (!video || video.readyState < 2 || !video.videoWidth) return false
+
+    // Flash effect
+    setFlash(true)
+    setTimeout(() => setFlash(false), 150)
+
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return false
+    ctx.drawImage(video, 0, 0)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+    const base64 = dataUrl.split(',')[1]
+    setPhotoPreview(dataUrl)
+    processPhoto(base64, 'image/jpeg')
+    return true
+  }
+
+  function handlePhotoFile(file: File) {
     const reader = new FileReader()
-    reader.onload = async (e) => {
+    reader.onload = (e) => {
       const dataUrl = e.target?.result as string
       const base64 = dataUrl.split(',')[1]
       setPhotoPreview(dataUrl)
-      setAnalyzing(true)
-      try {
-        const result = await analyzeAssetPhoto(base64, file.type as 'image/jpeg')
-        onPhotoResult(result, base64)
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'AI analysis failed'
-        onPhotoError(msg.includes('API_KEY') ? 'Add VITE_ANTHROPIC_API_KEY to .env to enable AI.' : msg)
-      } finally {
-        setAnalyzing(false)
-        setPhotoPreview(null)
-      }
+      processPhoto(base64, file.type)
     }
     reader.readAsDataURL(file)
   }
 
   useImperativeHandle(ref, () => ({
     triggerCapture() {
-      fileRef.current?.click()
+      if (photoPreview) { retakePhoto(); return }
+      if (!captureFromVideoFeed()) fileRef.current?.click()
     },
+    resetPhoto() { setPhotoPreview(null) },
   }))
 
   return (
     <div className="mb-3">
+      {/* Fallback file picker (used when camera feed unavailable) */}
       <input
         ref={fileRef}
         type="file"
@@ -102,68 +137,111 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
       />
 
       <div className="relative h-64 rounded-[16px] overflow-hidden bg-[#0B0B0D]">
-        <div id={SCANNER_DIV} className="absolute inset-0" />
 
-        {/* Static overlay when not scanning */}
-        {!scanning && !matchedBarcode && !analyzing && (
+        {photoPreview ? (
+          /* ── Photo view ── */
           <>
-            <div className="absolute inset-0 pointer-events-none" style={{
-              background: 'radial-gradient(circle at 30% 30%,rgba(255,255,255,.05),transparent 50%), linear-gradient(160deg,#1c1c20,#0b0b0d 70%)'
-            }} />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-28">
-              {(['tl','tr','bl','br'] as const).map((pos) => (
-                <div key={pos} className={`absolute w-5 h-5 border-[2.5px] border-primary-500 ${
-                  pos==='tl'?'top-0 left-0 rounded-tl-[7px] border-r-0 border-b-0':
-                  pos==='tr'?'top-0 right-0 rounded-tr-[7px] border-l-0 border-b-0':
-                  pos==='bl'?'bottom-0 left-0 rounded-bl-[7px] border-r-0 border-t-0':
-                  'bottom-0 right-0 rounded-br-[7px] border-l-0 border-t-0'}`} />
-              ))}
-              <div className="absolute left-1 right-1 h-0.5 rounded-sm" style={{
-                top:'50%',
-                background:'linear-gradient(90deg,transparent,#E8197D 30%,#F9BBDF,#E8197D 70%,transparent)',
-                boxShadow:'0 0 8px rgba(232,25,125,0.8)',
-                animation:'miniLaser 1.5s ease-in-out infinite',
-              }} />
-            </div>
-          </>
-        )}
+            <img src={photoPreview} alt="captured" className="absolute inset-0 w-full h-full object-cover" />
 
-        {/* Scanning status */}
-        {scanning && (
-          <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-black/60 backdrop-blur-sm rounded-full px-2.5 py-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-error-400" style={{ animation: 'chatDotBlink 1s ease-in-out infinite' }} />
-            <span className="text-[10px] font-bold text-white">Scanning…</span>
-          </div>
-        )}
-
-        {/* Analyzing overlay */}
-        {analyzing && photoPreview && (
-          <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-2">
-            <img src={photoPreview} alt="captured" className="absolute inset-0 w-full h-full object-cover opacity-40" />
-            <div className="relative z-10 flex flex-col items-center gap-2">
-              <div className="w-7 h-7 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              <p className="text-white text-xs font-bold">AI analyzing…</p>
-            </div>
-          </div>
-        )}
-
-        {/* Match badge */}
-        {matchedBarcode && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-            <div className="bg-success-500/90 backdrop-blur-sm rounded-[12px] px-4 py-2.5 flex items-center gap-2">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
-              <div>
-                <p className="text-[11px] font-extrabold text-white">Match found — fields filled</p>
-                <p className="text-[10px] text-white/75 font-medium">{matchedBarcode}</p>
+            {/* Analyzing overlay */}
+            {analyzing && (
+              <div className="absolute inset-0 bg-black/55 flex flex-col items-center justify-center gap-2 z-10">
+                <div className="w-7 h-7 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <p className="text-white text-xs font-bold">AI analyzing…</p>
               </div>
-            </div>
-          </div>
-        )}
+            )}
 
-        {scanError && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <p className="text-[11px] text-white/70 font-semibold px-4 text-center">{scanError}</p>
-          </div>
+            {/* Retake button — top-right */}
+            {!analyzing && (
+              <button
+                type="button"
+                onClick={retakePhoto}
+                className="absolute top-2.5 right-2.5 flex items-center gap-1 bg-black/60 backdrop-blur-sm rounded-full px-3 py-1.5 z-10"
+              >
+                <Camera size={11} color="white" />
+                <span className="text-[10px] font-bold text-white">Retake</span>
+              </button>
+            )}
+
+            {/* AI success badge — bottom */}
+            {!analyzing && (
+              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-4 pt-6 pb-3">
+                <p className="text-[10px] font-extrabold text-success-400 uppercase tracking-wide">AI fields filled ✓</p>
+              </div>
+            )}
+          </>
+        ) : (
+          /* ── Scanner / live view ── */
+          <>
+            <div id={SCANNER_DIV} className="absolute inset-0" />
+
+            {/* Shutter flash */}
+            {flash && <div className="absolute inset-0 bg-white z-20 pointer-events-none" />}
+
+            {/* Static overlay when idle */}
+            {!scanning && !matchedBarcode && (
+              <>
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  background: 'radial-gradient(circle at 30% 30%,rgba(255,255,255,.05),transparent 50%), linear-gradient(160deg,#1c1c20,#0b0b0d 70%)'
+                }} />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-28">
+                  {(['tl','tr','bl','br'] as const).map((pos) => (
+                    <div key={pos} className={`absolute w-5 h-5 border-[2.5px] border-primary-500 ${
+                      pos==='tl'?'top-0 left-0 rounded-tl-[7px] border-r-0 border-b-0':
+                      pos==='tr'?'top-0 right-0 rounded-tr-[7px] border-l-0 border-b-0':
+                      pos==='bl'?'bottom-0 left-0 rounded-bl-[7px] border-r-0 border-t-0':
+                      'bottom-0 right-0 rounded-br-[7px] border-l-0 border-t-0'}`} />
+                  ))}
+                  <div className="absolute left-1 right-1 h-0.5 rounded-sm" style={{
+                    top:'50%',
+                    background:'linear-gradient(90deg,transparent,#E8197D 30%,#F9BBDF,#E8197D 70%,transparent)',
+                    boxShadow:'0 0 8px rgba(232,25,125,0.8)',
+                    animation:'miniLaser 1.5s ease-in-out infinite',
+                  }} />
+                </div>
+              </>
+            )}
+
+            {/* Scanning status */}
+            {scanning && (
+              <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-black/60 backdrop-blur-sm rounded-full px-2.5 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-error-400" style={{ animation: 'chatDotBlink 1s ease-in-out infinite' }} />
+                <span className="text-[10px] font-bold text-white">Scanning…</span>
+              </div>
+            )}
+
+            {/* Capture button — bottom-right */}
+            {scanning && (
+              <button
+                type="button"
+                onClick={captureFromVideoFeed}
+                className="absolute bottom-3 right-3 w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm border-2 border-white/60 flex items-center justify-center active:scale-90 transition-transform z-10"
+              >
+                <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center">
+                  <Camera size={18} className="text-neutral-800" />
+                </div>
+              </button>
+            )}
+
+            {/* Match badge */}
+            {matchedBarcode && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                <div className="bg-success-500/90 backdrop-blur-sm rounded-[12px] px-4 py-2.5 flex items-center gap-2">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
+                  <div>
+                    <p className="text-[11px] font-extrabold text-white">Match found — fields filled</p>
+                    <p className="text-[10px] text-white/75 font-medium">{matchedBarcode}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {scanError && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <p className="text-[11px] text-white/70 font-semibold px-4 text-center">{scanError}</p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

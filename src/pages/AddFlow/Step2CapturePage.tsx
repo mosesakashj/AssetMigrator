@@ -206,6 +206,7 @@ export function Step2CapturePage() {
     setFields(makeEmptyFields(classify.priceUnit))
     setAutoFilled({})
     setShowVariants(false)
+    captureRef.current?.resetPhoto()
   }
 
   function finishSession() {

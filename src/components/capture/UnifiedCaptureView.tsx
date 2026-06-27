@@ -1,5 +1,4 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { Html5Qrcode } from 'html5-qrcode'
 import { Camera } from 'lucide-react'
 import { MOCK_BARCODE_DB } from '../../types/asset'
 import type { AssetFields } from '../../types/asset'
@@ -15,6 +14,21 @@ interface Props {
   onPhotoCaptured: (imageBase64: string) => void
 }
 
+// Decode a canvas frame for barcodes using BarcodeDetector (Chrome/Android)
+// or ZXing via a dynamic import fallback.
+async function decodeBarcode(canvas: HTMLCanvasElement): Promise<string | null> {
+  if (typeof (window as any).BarcodeDetector !== 'undefined') {
+    try {
+      const detector = new (window as any).BarcodeDetector()
+      const results = await detector.detect(canvas)
+      return results[0]?.rawValue ?? null
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
 export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(function UnifiedCaptureView(
   { onBarcodeMatch, onBarcodeNoMatch, onPhotoCaptured },
   ref
@@ -24,64 +38,105 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
   const [scanError, setScanError] = useState('')
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [flash, setFlash] = useState(false)
-  const scannerRef = useRef<Html5Qrcode | null>(null)
+
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const scanLoopRef = useRef<number | null>(null)
+  const activeRef = useRef(false)
   const fileRef = useRef<HTMLInputElement>(null)
-  const SCANNER_DIV = 'unified-scanner-div'
+  const scratchCanvas = useRef(document.createElement('canvas'))
 
-  // Start scanner whenever the live-view div is mounted (photoPreview === null)
   useEffect(() => {
-    if (photoPreview !== null) return
-    startScan()
-    return () => { try { scannerRef.current?.stop().catch(() => {}) } catch {} }
+    startCamera()
+    return () => stopCamera()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [photoPreview])
+  }, [])
 
-  async function startScan() {
+  async function startCamera() {
+    activeRef.current = true
     setScanError('')
-    if (scannerRef.current) {
-      try { await scannerRef.current.stop() } catch {}
-      scannerRef.current = null
-    }
+    setScanning(false)
+    setMatchedBarcode(null)
+
+    let stream: MediaStream
     try {
-      const scanner = new Html5Qrcode(SCANNER_DIV)
-      scannerRef.current = scanner
-      setScanning(true)
-      setMatchedBarcode(null)
-      await scanner.start(
-        { facingMode: 'environment' },
-        { fps: 10 },
-        (code) => {
-          try { scanner.stop().catch(() => {}) } catch {}
-          setScanning(false)
-          setMatchedBarcode(code)
-          const match = MOCK_BARCODE_DB[code]
-          if (match) onBarcodeMatch(match, code)
-          else onBarcodeNoMatch(code)
-        },
-        () => {}
-      )
-      const container = document.getElementById(SCANNER_DIV)
-      if (container) {
-        const video = container.querySelector('video') as HTMLVideoElement | null
-        if (video) {
-          video.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;'
-        }
-        container.querySelectorAll<HTMLElement>('div').forEach((d) => {
-          if (!d.querySelector('video')) d.style.display = 'none'
-        })
-      }
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      })
     } catch {
-      setScanning(false)
       setScanError('Camera access denied.')
+      return
     }
+
+    if (!activeRef.current) {
+      stream.getTracks().forEach((t) => t.stop())
+      return
+    }
+
+    streamRef.current = stream
+    const video = videoRef.current
+    if (video) {
+      video.srcObject = stream
+      try { await video.play() } catch {}
+    }
+    setScanning(true)
+    scheduleScanTick()
   }
 
-  function retakePhoto() {
-    setPhotoPreview(null)
+  function stopCamera() {
+    activeRef.current = false
+    if (scanLoopRef.current !== null) {
+      cancelAnimationFrame(scanLoopRef.current)
+      scanLoopRef.current = null
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop())
+      streamRef.current = null
+    }
+    const video = videoRef.current
+    if (video) video.srcObject = null
+    setScanning(false)
+  }
+
+  function scheduleScanTick() {
+    scanLoopRef.current = requestAnimationFrame(async () => {
+      if (!activeRef.current) return
+      const video = videoRef.current
+      if (!video || video.readyState < 2 || !video.videoWidth) {
+        scheduleScanTick()
+        return
+      }
+      const canvas = scratchCanvas.current
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })
+      if (ctx) {
+        ctx.drawImage(video, 0, 0)
+        try {
+          const code = await decodeBarcode(canvas)
+          if (code && activeRef.current) {
+            stopCamera()
+            setMatchedBarcode(code)
+            const match = MOCK_BARCODE_DB[code]
+            if (match) onBarcodeMatch(match, code)
+            else onBarcodeNoMatch(code)
+            return
+          }
+        } catch {}
+      }
+      if (activeRef.current) scheduleScanTick()
+    })
+  }
+
+  async function restartCamera() {
+    stopCamera()
+    await new Promise<void>((r) => setTimeout(r, 80))
+    await startCamera()
   }
 
   function captureFromVideoFeed(): boolean {
-    const video = document.querySelector(`#${SCANNER_DIV} video`) as HTMLVideoElement | null
+    const video = videoRef.current
     if (!video || video.readyState < 2 || !video.videoWidth) return false
 
     setFlash(true)
@@ -100,6 +155,11 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
     return true
   }
 
+  function retakePhoto() {
+    setPhotoPreview(null)
+    restartCamera()
+  }
+
   function handlePhotoFile(file: File) {
     const reader = new FileReader()
     reader.onload = (e) => {
@@ -116,7 +176,10 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
       if (photoPreview) { retakePhoto(); return }
       if (!captureFromVideoFeed()) fileRef.current?.click()
     },
-    resetPhoto() { setPhotoPreview(null) },
+    resetPhoto() {
+      setPhotoPreview(null)
+      restartCamera()
+    },
   }))
 
   return (
@@ -135,10 +198,18 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
 
       <div className="relative w-full aspect-[4/3] rounded-[16px] overflow-hidden bg-[#0B0B0D]">
 
+        {/* Video always in DOM — srcObject attached/detached to control stream */}
+        <video
+          ref={videoRef}
+          playsInline
+          muted
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ display: photoPreview ? 'none' : 'block' }}
+        />
+
         {photoPreview ? (
           <>
             <img src={photoPreview} alt="captured" className="absolute inset-0 w-full h-full object-cover" />
-
             <button
               type="button"
               onClick={retakePhoto}
@@ -150,11 +221,9 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
           </>
         ) : (
           <>
-            <div id={SCANNER_DIV} className="absolute inset-0" />
-
             {flash && <div className="absolute inset-0 bg-white z-20 pointer-events-none" />}
 
-            {!scanning && !matchedBarcode && (
+            {!scanning && !matchedBarcode && !scanError && (
               <>
                 <div className="absolute inset-0 pointer-events-none" style={{
                   background: 'radial-gradient(circle at 30% 30%,rgba(255,255,255,.05),transparent 50%), linear-gradient(160deg,#1c1c20,#0b0b0d 70%)'

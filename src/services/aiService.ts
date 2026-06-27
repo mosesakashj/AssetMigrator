@@ -49,9 +49,9 @@ Return ONLY the JSON object, no other text.`,
   return {}
 }
 
-export async function parseVoiceTranscript(transcript: string): Promise<{ name?: string; price?: string; priceUnit?: string }> {
-  // Fast regex fallback first
+export async function parseVoiceTranscript(transcript: string): Promise<{ name?: string; price?: string; priceUnit?: string; qty?: string }> {
   const priceMatch = transcript.match(/(\d+)\s*(?:rupees?|rs\.?|₹)?\s*(?:per\s+)?(day|hour|flat)/i)
+  const qtyMatch = transcript.match(/(?:qty|quantity|count|pieces?|units?)\s*[:\-]?\s*(\d+)/i)
   const nameGuess = transcript.replace(/\d+.*$/i, '').trim()
 
   if (!apiKey) {
@@ -59,6 +59,7 @@ export async function parseVoiceTranscript(transcript: string): Promise<{ name?:
       name: nameGuess || undefined,
       price: priceMatch?.[1],
       priceUnit: priceMatch?.[2] ? (priceMatch[2].toLowerCase() === 'hour' ? 'Per Hour' : 'Per Day') : undefined,
+      qty: qtyMatch?.[1],
     }
   }
 
@@ -66,13 +67,13 @@ export async function parseVoiceTranscript(transcript: string): Promise<{ name?:
     const client = getClient()
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 128,
+      max_tokens: 150,
       messages: [
         {
           role: 'user',
           content: `Extract asset details from this voice transcript and return ONLY JSON:
 "${transcript}"
-Return: {"name": "...", "price": "number only", "priceUnit": "Per Day|Per Hour|Flat"}
+Return: {"name": "...", "price": "number only", "priceUnit": "Per Day|Per Hour|Flat", "qty": "number only"}
 Omit fields not mentioned. Return ONLY the JSON.`,
         },
       ],
@@ -88,5 +89,6 @@ Omit fields not mentioned. Return ONLY the JSON.`,
     name: nameGuess || undefined,
     price: priceMatch?.[1],
     priceUnit: priceMatch?.[2] ? (priceMatch[2].toLowerCase() === 'hour' ? 'Per Hour' : 'Per Day') : undefined,
+    qty: qtyMatch?.[1],
   }
 }

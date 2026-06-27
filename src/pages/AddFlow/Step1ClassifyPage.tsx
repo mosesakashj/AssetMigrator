@@ -55,7 +55,7 @@ export function Step1ClassifyPage() {
 
         {/* ── Category ── */}
         <p className="text-[11px] font-extrabold uppercase tracking-wide text-neutral-400 mt-4 mb-2">Category</p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {CATEGORIES.map((cat) => (
             <button
               key={cat.label}
@@ -71,20 +71,20 @@ export function Step1ClassifyPage() {
               <span className="text-[10.5px] font-bold text-neutral-900 text-center leading-tight">{cat.label}</span>
             </button>
           ))}
-          {/* Custom chip */}
-          <button
-            type="button"
-            onClick={() => setSelectedCat({ label: CUSTOM_SENTINEL, icon: '📦' })}
-            className={`flex flex-col items-center gap-1.5 py-3 px-1.5 border-[1.5px] rounded-[14px] transition-all ${
-              isCustomCat
-                ? 'border-primary-600 bg-primary-50 shadow-sm'
-                : 'border-dashed border-neutral-300 bg-white hover:border-primary-300'
-            }`}
-          >
-            <Pencil size={20} className={isCustomCat ? 'text-primary-600' : 'text-neutral-400'} />
-            <span className="text-[10.5px] font-bold text-center leading-tight text-neutral-600">Custom</span>
-          </button>
         </div>
+        {/* Custom chip — full width, standalone */}
+        <button
+          type="button"
+          onClick={() => setSelectedCat({ label: CUSTOM_SENTINEL, icon: '📦' })}
+          className={`mt-2 w-full flex items-center justify-center gap-2 py-3 px-3 border-[1.5px] rounded-[14px] transition-all ${
+            isCustomCat
+              ? 'border-primary-600 bg-primary-50 shadow-sm'
+              : 'border-dashed border-neutral-300 bg-white hover:border-primary-300'
+          }`}
+        >
+          <Pencil size={16} className={isCustomCat ? 'text-primary-600' : 'text-neutral-400'} />
+          <span className="text-[10.5px] font-bold leading-tight text-neutral-600">Custom</span>
+        </button>
 
         {/* Custom category text input */}
         {isCustomCat && (

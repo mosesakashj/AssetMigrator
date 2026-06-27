@@ -1,9 +1,8 @@
 import { useCallback, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Camera, CheckCircle } from 'lucide-react'
+import { Camera, CheckCircle, Mic } from 'lucide-react'
 import { TopBar } from '../../components/layout/TopBar'
 import { UnifiedCaptureView, type UnifiedCaptureHandle } from '../../components/capture/UnifiedCaptureView'
-import { ChatInputField } from '../../components/capture/ChatInputField'
 import { VariantBuilder } from '../../components/shared/VariantBuilder'
 import { Toast, useToast } from '../../components/shared/Toast'
 import { useSessionStore } from '../../stores/sessionStore'
@@ -22,6 +21,23 @@ function makeEmptyFields(): AssetFields {
 }
 
 const PRICE_UNITS: PriceUnit[] = ['Per Day', 'Per Hour', 'Flat']
+const UNIT_LABEL: Record<PriceUnit, string> = { 'Per Day': '/Day', 'Per Hour': '/Hr', 'Flat': 'Flat' }
+
+// SpeechRecognition browser types
+interface SpeechRecognitionEvent extends Event { results: SpeechRecognitionResultList }
+interface SpeechRec extends EventTarget {
+  continuous: boolean; interimResults: boolean; lang: string
+  start(): void; stop(): void
+  onstart: (() => void) | null
+  onresult: ((e: SpeechRecognitionEvent) => void) | null
+  onend: (() => void) | null
+}
+function getSpeechRec() {
+  const w = window as Window & { SpeechRecognition?: new () => SpeechRec; webkitSpeechRecognition?: new () => SpeechRec }
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null
+}
+
+type VoiceState = 'idle' | 'listening' | 'processing'
 
 export function Step2CapturePage() {
   const navigate = useNavigate()
@@ -30,11 +46,17 @@ export function Step2CapturePage() {
   const { msg, show, clear } = useToast()
 
   const captureRef = useRef<UnifiedCaptureHandle>(null)
+  const recRef = useRef<SpeechRec | null>(null)
+  const transcriptRef = useRef('')
 
   const [fields, setFields] = useState<AssetFields>(makeEmptyFields())
   const [autoFilled, setAutoFilled] = useState<AutoFilled>({})
   const [showVariants, setShowVariants] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [voiceState, setVoiceState] = useState<VoiceState>('idle')
+  const [voiceLive, setVoiceLive] = useState('')
+  const [voiceSummary, setVoiceSummary] = useState('')
+
   const sessionCount = sessionAssets.length
 
   function setField<K extends keyof AssetFields>(key: K, val: AssetFields[K]) {
@@ -49,15 +71,62 @@ export function Step2CapturePage() {
     setAutoFilled(af)
   }, [])
 
-  // ── Capture handlers ──────────────────────────────────────────────
+  // ── Voice assistant ────────────────────────────────────────────────
+  function startVoice() {
+    const SpeechRec = getSpeechRec()
+    if (!SpeechRec) { show('Speech not supported — try Chrome'); return }
+    transcriptRef.current = ''
+    setVoiceLive('')
+    setVoiceSummary('')
+    const rec = new SpeechRec()
+    recRef.current = rec
+    rec.continuous = false
+    rec.interimResults = true
+    rec.lang = 'en-IN'
+    rec.onstart = () => setVoiceState('listening')
+    rec.onresult = (e: SpeechRecognitionEvent) => {
+      const text = Array.from(e.results).map((r) => (r as SpeechRecognitionResult)[0].transcript).join('')
+      transcriptRef.current = text
+      setVoiceLive(text)
+    }
+    rec.onend = async () => {
+      const text = transcriptRef.current
+      if (!text) { setVoiceState('idle'); return }
+      setVoiceState('processing')
+      try {
+        const parsed = await parseVoiceTranscript(text)
+        const partial: Partial<AssetFields> = {}
+        const keys: (keyof AutoFilled)[] = []
+        if (parsed.name)     { partial.name = parsed.name;                          keys.push('name') }
+        if (parsed.price)    { partial.price = parsed.price;                        keys.push('price') }
+        if (parsed.priceUnit){ partial.priceUnit = parsed.priceUnit as PriceUnit }
+        if (parsed.qty)      { partial.qty = parsed.qty }
+        applyAutoFill(partial, keys)
+        const parts = [
+          parsed.name && parsed.name,
+          parsed.price && `₹${parsed.price}${parsed.priceUnit ? ' ' + UNIT_LABEL[parsed.priceUnit as PriceUnit] : ''}`,
+          parsed.qty && `×${parsed.qty}`,
+        ].filter(Boolean)
+        setVoiceSummary(parts.join(' · '))
+      } catch {
+        show('Could not parse voice — try again')
+      }
+      setVoiceState('idle')
+    }
+    rec.start()
+  }
+
+  function stopVoice() { recRef.current?.stop() }
+
+  // ── Capture handlers ───────────────────────────────────────────────
   function handlePhotoResult(result: AIRecognitionResult, imageBase64: string) {
     const partial: Partial<AssetFields> = { imageBase64 }
     const keys: (keyof AutoFilled)[] = []
-    if (result.name)          { partial.name = result.name;                   keys.push('name') }
-    if (result.description)   { partial.description = result.description;     keys.push('description') }
-    if (result.material)      { partial.material = result.material;           keys.push('material') }
-    if (result.suggestedPrice){ partial.price = result.suggestedPrice;        keys.push('price') }
-    if (result.category)        partial.category = result.category
+    if (result.name)           { partial.name = result.name;                keys.push('name') }
+    if (result.description)    { partial.description = result.description;  keys.push('description') }
+    if (result.material)       { partial.material = result.material;        keys.push('material') }
+    if (result.suggestedPrice) { partial.price = result.suggestedPrice;     keys.push('price') }
+    if (result.category)         partial.category = result.category
     applyAutoFill(partial, keys)
     show(`✓ AI identified "${result.name ?? 'asset'}"`)
   }
@@ -70,30 +139,9 @@ export function Step2CapturePage() {
     show(`✓ Barcode matched — ${barcode}`)
   }
 
-  // ── Per-field voice ───────────────────────────────────────────────
-  async function handleNameVoice(transcript: string) {
-    const parsed = await parseVoiceTranscript(transcript)
-    const name = parsed.name ?? transcript
-    setFields((f) => ({ ...f, name }))
-    setAutoFilled((a) => ({ ...a, name: true }))
-    show(`✓ "${name}"`)
-  }
-
-  async function handlePriceVoice(transcript: string) {
-    const parsed = await parseVoiceTranscript(transcript)
-    const price = parsed.price ?? transcript.match(/\d+/)?.[0] ?? ''
-    const priceUnit = (parsed.priceUnit as PriceUnit) ?? fields.priceUnit
-    setFields((f) => ({ ...f, price, priceUnit }))
-    setAutoFilled((a) => ({ ...a, price: true }))
-    if (price) show(`✓ Price ₹${price}`)
-  }
-
-  // ── Save / Finish ─────────────────────────────────────────────────
+  // ── Save / Finish ──────────────────────────────────────────────────
   function saveAndNext() {
-    if (!fields.name.trim() || !fields.price.trim()) {
-      show('Name and price are required')
-      return
-    }
+    if (!fields.name.trim() || !fields.price.trim()) { show('Name and price are required'); return }
     addSessionAsset({
       ...fields,
       id: Date.now().toString(36) + Math.random().toString(36).slice(2),
@@ -108,19 +156,13 @@ export function Step2CapturePage() {
     setFields(makeEmptyFields())
     setAutoFilled({})
     setShowVariants(false)
+    setVoiceSummary('')
   }
 
-  function finishSession() {
-    commitSession()
-    setShowSuccess(true)
-  }
+  function finishSession() { commitSession(); setShowSuccess(true) }
+  function handleBack() { if (sessionCount > 0) finishSession(); else navigate('/add/step1') }
 
-  function handleBack() {
-    if (sessionCount > 0) finishSession()
-    else navigate('/add/step1')
-  }
-
-  // ── Success ───────────────────────────────────────────────────────
+  // ── Success screen ─────────────────────────────────────────────────
   if (showSuccess) {
     return (
       <div className="flex flex-col h-screen bg-neutral-100 max-w-md mx-auto animate-fade-in">
@@ -153,12 +195,12 @@ export function Step2CapturePage() {
     )
   }
 
-  // ── Main capture ──────────────────────────────────────────────────
+  // ── Main capture ───────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-screen bg-neutral-100 max-w-md mx-auto animate-slide-up">
       <TopBar title="Add Asset Session" onBack={handleBack} />
 
-      {/* Progress + session bar */}
+      {/* Session bar */}
       <div className="bg-white border-b border-neutral-200 flex-shrink-0">
         <div className="flex gap-1.5 px-4 pt-2 pb-0">
           <div className="flex-1 h-1 rounded-full bg-primary-600" />
@@ -188,7 +230,7 @@ export function Step2CapturePage() {
       {/* Scrollable form */}
       <div className="flex-1 overflow-y-auto scrollbar-none px-4 pt-3 pb-2">
 
-        {/* Capture view (auto-starts barcode scanner) */}
+        {/* Camera / barcode scanner */}
         <UnifiedCaptureView
           ref={captureRef}
           onBarcodeMatch={handleBarcodeMatch}
@@ -197,77 +239,155 @@ export function Step2CapturePage() {
           onPhotoError={(e) => show(e)}
         />
 
-        {/* Row 1 — Name */}
-        <ChatInputField
-          label="Asset Name"
-          required
-          autoTag={autoFilled.name}
-          placeholder="Type or tap 🎤 to speak"
-          value={fields.name}
-          autofilled={autoFilled.name}
-          onChange={(v) => setField('name', v)}
-          onVoiceResult={handleNameVoice}
-        />
-
-        {/* Row 2 — Price + Qty */}
-        <div className="flex gap-2 items-start">
-          <div className="flex-[3]">
-            <ChatInputField
-              label="Price"
-              required
-              autoTag={autoFilled.price}
-              prefix="₹"
-              placeholder="0"
-              value={fields.price}
-              autofilled={autoFilled.price}
-              inputMode="decimal"
-              onChange={(v) => setField('price', v)}
-              onVoiceResult={handlePriceVoice}
-            />
+        {/* ── Voice assistant bar ── */}
+        <button
+          type="button"
+          onClick={voiceState === 'listening' ? stopVoice : startVoice}
+          disabled={voiceState === 'processing'}
+          className={`w-full mb-3 flex items-center gap-3 rounded-2xl px-4 py-3 transition-all active:scale-[0.98] ${
+            voiceState === 'listening'
+              ? 'bg-error-50 border-[1.5px] border-error-400'
+              : voiceState === 'processing'
+              ? 'bg-neutral-100 border-[1.5px] border-neutral-200'
+              : 'bg-white border-[1.5px] border-neutral-200'
+          }`}
+        >
+          {/* Mic icon */}
+          <div className={`w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center ${
+            voiceState === 'listening' ? 'bg-error-500' : ''
+          }`} style={
+            voiceState !== 'listening' && voiceState !== 'processing'
+              ? { background: 'linear-gradient(135deg,#9E1568,#E8197D)', boxShadow: '0 3px 10px rgba(194,26,127,0.3)' }
+              : voiceState === 'listening'
+              ? { animation: 'chatMicPulse 1s ease-in-out infinite' }
+              : { background: '#e5e7eb' }
+          }>
+            {voiceState === 'processing'
+              ? <div className="w-4 h-4 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin" />
+              : <Mic size={18} color="white" strokeWidth={2} />
+            }
           </div>
-          <div className="flex-[2]">
+
+          {/* Label / live transcript */}
+          <div className="flex-1 text-left min-w-0">
+            {voiceState === 'listening' ? (
+              <>
+                <p className="text-xs font-extrabold text-error-600">Listening…</p>
+                <p className="text-[11px] font-medium text-neutral-500 truncate mt-px">
+                  {voiceLive || 'Say: Name Box · Price 500 · Qty 3'}
+                </p>
+              </>
+            ) : voiceState === 'processing' ? (
+              <p className="text-xs font-bold text-neutral-500">Parsing with AI…</p>
+            ) : voiceSummary ? (
+              <>
+                <p className="text-[10px] font-extrabold text-success-600 uppercase tracking-wide">Voice filled</p>
+                <p className="text-[12px] font-bold text-neutral-800 truncate mt-px">{voiceSummary}</p>
+              </>
+            ) : (
+              <>
+                <p className="text-[12px] font-bold text-neutral-800">Voice mode</p>
+                <p className="text-[11px] font-medium text-neutral-400 mt-px">
+                  Say: <span className="text-neutral-600">Name</span> Box ·{' '}
+                  <span className="text-neutral-600">Price</span> 500 ·{' '}
+                  <span className="text-neutral-600">Qty</span> 3
+                </p>
+              </>
+            )}
+          </div>
+
+          {/* Live waveform dots */}
+          {voiceState === 'listening' && (
+            <div className="flex items-end gap-0.5 h-5 flex-shrink-0">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="w-0.5 rounded-sm bg-error-400"
+                  style={{ height: 6, animation: `wfBounce 0.9s ease-in-out ${i * 0.12}s infinite` }} />
+              ))}
+            </div>
+          )}
+        </button>
+
+        {/* ── Name field ── */}
+        <div className="mb-3">
+          <div className="flex items-center gap-1 text-xs font-bold text-neutral-500 mb-1.5">
+            Asset Name <span className="text-error-500">*</span>
+            {autoFilled.name && <AutoTag />}
+          </div>
+          <input
+            value={fields.name}
+            onChange={(e) => setField('name', e.target.value)}
+            placeholder="e.g. Folding Table"
+            className={`w-full px-4 py-[13px] rounded-full text-sm font-medium outline-none transition-colors border-[1.5px] ${
+              autoFilled.name
+                ? 'bg-success-50 border-green-300 text-neutral-900'
+                : 'bg-white border-neutral-200 focus:border-primary-600 text-neutral-900'
+            }`}
+          />
+        </div>
+
+        {/* ── Price + Unit + Qty row ── */}
+        <div className="flex gap-2 mb-4">
+          {/* Price with inline unit dropdown */}
+          <div className="flex-[3]">
+            <div className="flex items-center gap-1 text-xs font-bold text-neutral-500 mb-1.5">
+              Price <span className="text-error-500">*</span>
+              {autoFilled.price && <AutoTag />}
+            </div>
+            <div className={`flex items-center border-[1.5px] rounded-full overflow-hidden transition-colors ${
+              autoFilled.price ? 'bg-success-50 border-green-300' : 'bg-white border-neutral-200 focus-within:border-primary-600'
+            }`}>
+              <span className="pl-4 text-sm font-bold text-neutral-400 flex-shrink-0">₹</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                value={fields.price}
+                onChange={(e) => setField('price', e.target.value)}
+                placeholder="0"
+                className="flex-1 py-[13px] px-2 text-sm font-medium bg-transparent outline-none min-w-0 text-neutral-900"
+              />
+              <select
+                value={fields.priceUnit}
+                onChange={(e) => setField('priceUnit', e.target.value as PriceUnit)}
+                className="text-[11px] font-bold text-primary-600 bg-primary-50 border-l border-neutral-200 py-[13px] px-3 outline-none appearance-none cursor-pointer flex-shrink-0"
+              >
+                {PRICE_UNITS.map((u) => (
+                  <option key={u} value={u}>{UNIT_LABEL[u]}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Qty */}
+          <div className="flex-[1.6]">
             <div className="text-xs font-bold text-neutral-500 mb-1.5">Qty</div>
             <input
               type="number"
               inputMode="numeric"
               value={fields.qty}
               onChange={(e) => setField('qty', e.target.value)}
-              placeholder="0"
-              className="w-full px-4 py-[13px] bg-white border-[1.5px] border-neutral-200 rounded-full text-sm font-medium text-neutral-900 text-center outline-none focus:border-primary-600 transition-colors"
+              placeholder="1"
+              className="w-full px-3 py-[13px] bg-white border-[1.5px] border-neutral-200 rounded-full text-sm font-medium text-neutral-900 text-center outline-none focus:border-primary-600 transition-colors"
             />
           </div>
-        </div>
-
-        {/* Price unit toggle */}
-        <div className="flex bg-neutral-100 rounded-[10px] p-1 gap-0.5 mb-4 mt-1">
-          {PRICE_UNITS.map((u) => (
-            <button key={u} type="button" onClick={() => setField('priceUnit', u)}
-              className={`flex-1 py-2 rounded-[8px] text-xs font-bold transition-all ${
-                fields.priceUnit === u ? 'bg-primary-600 text-white' : 'text-neutral-500'}`}>
-              {u}
-            </button>
-          ))}
         </div>
 
         {/* AI auto-filled extras */}
         {autoFilled.description && fields.description && (
           <div className="mb-3.5">
             <div className="flex items-center gap-1 text-xs font-bold text-neutral-500 mb-1.5">
-              Description
-              <span className="text-[9.5px] font-extrabold text-success-600 bg-success-50 border border-green-200 rounded-full px-1.5 py-px tracking-wide ml-1">AUTO</span>
+              Description <AutoTag />
             </div>
             <textarea value={fields.description} onChange={(e) => setField('description', e.target.value)}
-              rows={2} className="w-full px-3.5 py-3 border-[1.5px] border-green-300 bg-success-50 rounded-md text-sm font-medium outline-none resize-none" />
+              rows={2} className="w-full px-3.5 py-3 border-[1.5px] border-green-300 bg-success-50 rounded-xl text-sm font-medium outline-none resize-none" />
           </div>
         )}
         {autoFilled.material && fields.material && (
           <div className="mb-3.5">
             <div className="flex items-center gap-1 text-xs font-bold text-neutral-500 mb-1.5">
-              Material
-              <span className="text-[9.5px] font-extrabold text-success-600 bg-success-50 border border-green-200 rounded-full px-1.5 py-px tracking-wide ml-1">AUTO</span>
+              Material <AutoTag />
             </div>
             <input value={fields.material} onChange={(e) => setField('material', e.target.value)}
-              className="w-full px-3.5 py-3 border-[1.5px] border-green-300 bg-success-50 rounded-md text-sm font-medium outline-none" />
+              className="w-full px-3.5 py-3 border-[1.5px] border-green-300 bg-success-50 rounded-xl text-sm font-medium outline-none" />
           </div>
         )}
 
@@ -297,26 +417,20 @@ export function Step2CapturePage() {
         </div>
       </div>
 
-      {/* ── Footer: Finish | Capture | Save & Add Next ── */}
+      {/* ── Footer ── */}
       <div className="px-4 pt-3 pb-5 bg-white border-t border-neutral-200 flex gap-2 flex-shrink-0">
-        {/* Finish */}
         <button onClick={finishSession}
           className="flex-1 py-3.5 rounded-xl border-[1.5px] border-neutral-200 text-xs font-bold text-neutral-500 leading-tight">
           Finish<br />
           <span className="text-[10px] font-medium">({sessionCount})</span>
         </button>
 
-        {/* Capture */}
-        <button
-          type="button"
-          onClick={() => captureRef.current?.triggerCapture()}
-          className="flex-1 py-3.5 rounded-xl border-[1.5px] border-primary-200 bg-primary-50 text-primary-600 flex flex-col items-center justify-center gap-0.5"
-        >
+        <button type="button" onClick={() => captureRef.current?.triggerCapture()}
+          className="flex-1 py-3.5 rounded-xl border-[1.5px] border-primary-200 bg-primary-50 text-primary-600 flex flex-col items-center justify-center gap-0.5">
           <Camera size={16} />
           <span className="text-[10px] font-bold mt-0.5">Capture</span>
         </button>
 
-        {/* Save */}
         <button onClick={saveAndNext}
           className="flex-[2] py-3.5 rounded-xl text-sm font-extrabold text-white leading-tight"
           style={{ background: 'linear-gradient(100deg,#9E1568,#C21A7F,#E8197D)', boxShadow: '0 4px 14px rgba(194,26,127,0.3)' }}>
@@ -327,6 +441,14 @@ export function Step2CapturePage() {
 
       <Toast message={msg} onDone={clear} />
     </div>
+  )
+}
+
+function AutoTag() {
+  return (
+    <span className="text-[9.5px] font-extrabold text-success-600 bg-success-50 border border-green-200 rounded-full px-1.5 py-px tracking-wide ml-1">
+      AUTO
+    </span>
   )
 }
 

@@ -1,15 +1,8 @@
 export type PriceUnit = 'Per Day' | 'Per Hour' | 'Flat'
 
 export type AssetCategory =
-  | 'Jewellery'
-  | 'Camping'
-  | 'Power Tools'
-  | 'Event'
-  | 'AV Equip.'
-  | 'Mobility'
-  | 'Medical'
-  | 'Costumes'
-  | 'Other'
+  | 'Choker'
+  | 'Necklace'
 
 export interface VariantAttribute {
   name: string
@@ -64,15 +57,8 @@ export interface AIRecognitionResult {
 }
 
 export const CATEGORIES: { label: AssetCategory | string; icon: string }[] = [
-  { label: 'Jewellery', icon: '💍' },
-  { label: 'Camping', icon: '⛺' },
-  { label: 'Power Tools', icon: '🔧' },
-  { label: 'Event', icon: '🎉' },
-  { label: 'AV Equip.', icon: '📷' },
-  { label: 'Mobility', icon: '🚲' },
-  { label: 'Medical', icon: '🏥' },
-  { label: 'Costumes', icon: '👗' },
-  { label: 'Other', icon: '➕' },
+  { label: 'Choker', icon: '📿' },
+  { label: 'Necklace', icon: '💎' },
 ]
 
 export const BRANDS = [
@@ -90,9 +76,6 @@ export const BRANDS = [
 export const BRANCHES = [
   'Bangalore HQ',
   'Whitefield',
-  'Electronic City',
-  'Mumbai Central',
-  'Delhi NCR',
 ]
 
 export const MOCK_BARCODE_DB: Record<string, Partial<AssetFields>> = {

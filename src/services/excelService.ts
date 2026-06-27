@@ -11,6 +11,7 @@ export function exportAssetsToExcel(assets: SavedAsset[], filename = 'RentAsst_I
     Material: a.material,
     Condition: a.condition,
     Price: a.price,
+    Qty: a.qty || '',
     'Price Unit': a.priceUnit,
     Branch: a.branch,
     Variants: a.variantCombos.length > 0
@@ -25,7 +26,7 @@ export function exportAssetsToExcel(assets: SavedAsset[], filename = 'RentAsst_I
   ws['!cols'] = [
     { wch: 30 }, { wch: 14 }, { wch: 18 }, { wch: 18 },
     { wch: 40 }, { wch: 14 }, { wch: 12 }, { wch: 10 },
-    { wch: 12 }, { wch: 18 }, { wch: 50 }, { wch: 14 },
+    { wch: 8 },  { wch: 12 }, { wch: 18 }, { wch: 50 }, { wch: 14 },
   ]
 
   const wb = XLSX.utils.book_new()

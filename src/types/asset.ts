@@ -31,6 +31,7 @@ export interface AssetFields {
   material: string
   condition: string
   price: string
+  qty: string
   priceUnit: PriceUnit
   imageBase64: string | null
   variantAttributes: VariantAttribute[]

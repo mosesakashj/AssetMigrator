@@ -1,8 +1,8 @@
 import { useCallback, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CheckCircle, ScanLine, Sparkles } from 'lucide-react'
+import { Camera, CheckCircle } from 'lucide-react'
 import { TopBar } from '../../components/layout/TopBar'
-import { UnifiedCaptureView, type UnifiedCaptureHandle, type CaptureMode } from '../../components/capture/UnifiedCaptureView'
+import { UnifiedCaptureView, type UnifiedCaptureHandle } from '../../components/capture/UnifiedCaptureView'
 import { ChatInputField } from '../../components/capture/ChatInputField'
 import { VariantBuilder } from '../../components/shared/VariantBuilder'
 import { Toast, useToast } from '../../components/shared/Toast'
@@ -30,7 +30,6 @@ export function Step2CapturePage() {
   const { msg, show, clear } = useToast()
 
   const captureRef = useRef<UnifiedCaptureHandle>(null)
-  const [captureMode, setCaptureMode] = useState<CaptureMode>('scan')
 
   const [fields, setFields] = useState<AssetFields>(makeEmptyFields())
   const [autoFilled, setAutoFilled] = useState<AutoFilled>({})
@@ -196,7 +195,6 @@ export function Step2CapturePage() {
           onBarcodeNoMatch={(code) => show(`No match for ${code}`)}
           onPhotoResult={handlePhotoResult}
           onPhotoError={(e) => show(e)}
-          onModeChange={setCaptureMode}
         />
 
         {/* Row 1 — Name */}
@@ -314,10 +312,8 @@ export function Step2CapturePage() {
           onClick={() => captureRef.current?.triggerCapture()}
           className="flex-1 py-3.5 rounded-xl border-[1.5px] border-primary-200 bg-primary-50 text-primary-600 flex flex-col items-center justify-center gap-0.5"
         >
-          {captureMode === 'photo'
-            ? <><Sparkles size={16} /><span className="text-[10px] font-bold mt-0.5">AI Capture</span></>
-            : <><ScanLine size={16} /><span className="text-[10px] font-bold mt-0.5">Scan</span></>
-          }
+          <Camera size={16} />
+          <span className="text-[10px] font-bold mt-0.5">Capture</span>
         </button>
 
         {/* Save */}

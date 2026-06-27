@@ -15,7 +15,7 @@ export function AssetsListPage() {
   }, [assets, clearNewBadges])
 
   return (
-    <div className="flex flex-col h-screen bg-neutral-100 max-w-md mx-auto">
+    <div className="flex flex-col h-screen bg-neutral-100 max-w-md mx-auto relative">
       <TopBar
         title="Assets"
         right={

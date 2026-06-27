@@ -46,6 +46,7 @@ export function Step2CapturePage() {
   const [tab, setTab] = useState<Tab>('photo')
   const [fields, setFields] = useState<AssetFields>(makeEmptyFields())
   const [autoFilled, setAutoFilled] = useState<AutoFilled>({})
+  const [showVariants, setShowVariants] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const sessionCount = sessionAssets.length
 
@@ -109,6 +110,7 @@ export function Step2CapturePage() {
     show(`✓ "${fields.name}" added — ready for next`)
     setFields(makeEmptyFields())
     setAutoFilled({})
+    setShowVariants(false)
   }
 
   function finishSession() {
@@ -276,27 +278,21 @@ export function Step2CapturePage() {
         <div className="mb-3">
           <button
             type="button"
-            onClick={() => setField('variantAttributes', fields.variantAttributes.length ? [] : [])}
+            onClick={() => {
+              const next = !showVariants
+              setShowVariants(next)
+              if (!next) setFields((f) => ({ ...f, variantAttributes: [], variantCombos: [] }))
+            }}
             className="w-full flex items-center justify-between bg-white border-[1.5px] border-neutral-200 rounded-md px-3.5 py-3"
           >
             <div className="text-left">
               <div className="text-sm font-bold text-neutral-900">This asset has variants</div>
               <div className="text-xs font-medium text-neutral-400 mt-0.5">e.g. different sizes, colors or capacities</div>
             </div>
-            <ToggleSwitch
-              on={fields.variantAttributes.length > 0 || fields.variantCombos.length > 0}
-              onToggle={() => {
-                if (fields.variantAttributes.length > 0 || fields.variantCombos.length > 0) {
-                  setFields((f) => ({ ...f, variantAttributes: [], variantCombos: [] }))
-                } else {
-                  // just keep the section open by adding a placeholder that triggers the section
-                  setFields((f) => ({ ...f, _showVariants: true } as AssetFields & { _showVariants: boolean }))
-                }
-              }}
-            />
+            <ToggleSwitch on={showVariants} onToggle={() => {}} />
           </button>
 
-          {(fields.variantAttributes.length > 0 || (fields as AssetFields & { _showVariants?: boolean })._showVariants) && (
+          {showVariants && (
             <VariantBuilder
               attributes={fields.variantAttributes}
               combos={fields.variantCombos}

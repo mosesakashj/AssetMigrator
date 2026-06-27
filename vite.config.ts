@@ -36,5 +36,17 @@ export default defineConfig({
   ],
   define: {
     global: 'globalThis'
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'xlsx': ['xlsx'],
+          'scanner': ['html5-qrcode'],
+          'anthropic': ['@anthropic-ai/sdk'],
+        }
+      }
+    }
   }
 })

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Pencil } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { TopBar } from '../../components/layout/TopBar'
 import { BrandComboBox } from '../../components/shared/BrandComboBox'
 import { useSessionStore } from '../../stores/sessionStore'
@@ -14,29 +14,70 @@ const PRICE_UNITS: { value: PriceUnit; label: string; desc: string }[] = [
   { value: 'Flat', label: 'Flat', desc: 'One-time fee' },
 ]
 
-const CUSTOM_SENTINEL = '__custom__'
-
 export function Step1ClassifyPage() {
   const navigate = useNavigate()
   const { setClassify, newSession } = useSessionStore()
   const { clearSessionAssets } = useAssetsStore()
 
-  const [selectedCat, setSelectedCat] = useState<{ label: string; icon: string }>(CATEGORIES[0])
-  const [customCat, setCustomCat] = useState('')
+  // selectedCats holds both preset and custom-added labels
+  const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set([CATEGORIES[0].label]))
+  // extra categories the user added via quick-add (not in CATEGORIES)
+  const [extraCats, setExtraCats] = useState<string[]>([])
+  const [catQuery, setCatQuery] = useState('')
+  const [catOpen, setCatOpen] = useState(false)
+  const catInputRef = useRef<HTMLInputElement>(null)
+
   const [brand, setBrand] = useState('')
   const [model, setModel] = useState('')
   const [branch, setBranch] = useState(BRANCHES[0])
   const [priceUnit, setPriceUnit] = useState<PriceUnit>('Per Day')
 
-  const isCustomCat = selectedCat.label === CUSTOM_SENTINEL
-  const finalCategory = isCustomCat ? customCat.trim() || 'Custom' : selectedCat.label
-  const finalIcon = isCustomCat ? '📦' : selectedCat.icon
+  const allCats = [...CATEGORIES, ...extraCats.map((l) => ({ label: l, icon: '🏷️' }))]
+
+  const filtered = catQuery.trim()
+    ? allCats.filter((c) => c.label.toLowerCase().includes(catQuery.toLowerCase()))
+    : allCats
+
+  const isNew = catQuery.trim().length > 0 &&
+    !allCats.some((c) => c.label.toLowerCase() === catQuery.trim().toLowerCase())
+
+  function toggleCat(label: string) {
+    setSelectedCats((prev) => {
+      const next = new Set(prev)
+      if (next.has(label)) { if (next.size > 1) next.delete(label) }
+      else next.add(label)
+      return next
+    })
+  }
+
+  function addCustomCat(label: string) {
+    const trimmed = label.trim()
+    if (!trimmed) return
+    if (!allCats.some((c) => c.label.toLowerCase() === trimmed.toLowerCase())) {
+      setExtraCats((prev) => [...prev, trimmed])
+    }
+    setSelectedCats((prev) => new Set([...prev, trimmed]))
+    setCatQuery('')
+    setCatOpen(false)
+    catInputRef.current?.blur()
+  }
+
+  function selectFromDropdown(label: string) {
+    toggleCat(label)
+    setCatQuery('')
+    setCatOpen(false)
+    catInputRef.current?.blur()
+  }
+
+  const firstCat = CATEGORIES.find((c) => selectedCats.has(c.label))
+  const finalIcon = firstCat ? firstCat.icon : '🏷️'
+  const allSelected = [...selectedCats]
 
   function handleNext() {
     newSession()
     clearSessionAssets()
     setClassify({
-      category: finalCategory as AssetCategory,
+      category: allSelected.join(', ') as AssetCategory,
       categoryIcon: finalIcon,
       brand,
       model,
@@ -63,49 +104,79 @@ export function Step1ClassifyPage() {
 
         {/* ── Category ── */}
         <p className="text-[11px] font-extrabold uppercase tracking-wide text-neutral-400 mt-4 mb-2">Category</p>
-        <div className="grid grid-cols-2 gap-2">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.label}
-              type="button"
-              onClick={() => setSelectedCat(cat)}
-              className={`flex flex-col items-center gap-1.5 py-3 px-1.5 border-[1.5px] rounded-[14px] transition-all ${
-                selectedCat.label === cat.label
-                  ? 'border-primary-600 bg-primary-50 shadow-sm'
-                  : 'border-neutral-200 bg-white hover:border-primary-200'
-              }`}
-            >
-              <span className="text-xl">{cat.icon}</span>
-              <span className="text-[10.5px] font-bold text-neutral-900 text-center leading-tight">{cat.label}</span>
-            </button>
-          ))}
-        </div>
-        {/* Custom chip — full width, standalone */}
-        <button
-          type="button"
-          onClick={() => setSelectedCat({ label: CUSTOM_SENTINEL, icon: '📦' })}
-          className={`mt-2 w-full flex items-center justify-center gap-2 py-3 px-3 border-[1.5px] rounded-[14px] transition-all ${
-            isCustomCat
-              ? 'border-primary-600 bg-primary-50 shadow-sm'
-              : 'border-dashed border-neutral-300 bg-white hover:border-primary-300'
-          }`}
-        >
-          <Pencil size={16} className={isCustomCat ? 'text-primary-600' : 'text-neutral-400'} />
-          <span className="text-[10.5px] font-bold leading-tight text-neutral-600">Custom</span>
-        </button>
 
-        {/* Custom category text input */}
-        {isCustomCat && (
-          <div className="mt-2">
-            <input
-              autoFocus
-              value={customCat}
-              onChange={(e) => setCustomCat(e.target.value)}
-              placeholder="Type custom category e.g. Garden Tools"
-              className="w-full px-3.5 py-3 bg-white border-[1.5px] border-primary-600 rounded-md text-sm font-medium text-neutral-900 outline-none shadow-[0_0_0_3px_rgba(194,26,127,0.08)]"
-            />
+        {/* Selected chips */}
+        {selectedCats.size > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {[...selectedCats].map((label) => {
+              const cat = allCats.find((c) => c.label === label)
+              return (
+                <span key={label} className="flex items-center gap-1 text-[11px] font-bold text-primary-700 bg-primary-50 border border-primary-200 rounded-full pl-2 pr-1 py-1">
+                  {cat?.icon} {label}
+                  <button
+                    type="button"
+                    onMouseDown={(e) => { e.preventDefault(); toggleCat(label) }}
+                    className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-primary-200 transition-colors ml-0.5"
+                    aria-label={`Remove ${label}`}
+                  >
+                    <X size={9} strokeWidth={3} className="text-primary-600" />
+                  </button>
+                </span>
+              )
+            })}
           </div>
         )}
+
+        {/* Search combobox */}
+        <div className="relative">
+          <input
+            ref={catInputRef}
+            value={catQuery}
+            onChange={(e) => { setCatQuery(e.target.value); setCatOpen(true) }}
+            onFocus={() => setCatOpen(true)}
+            onBlur={() => setTimeout(() => setCatOpen(false), 150)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && catQuery.trim()) {
+                e.preventDefault()
+                isNew ? addCustomCat(catQuery) : selectFromDropdown(filtered[0]?.label ?? catQuery.trim())
+              }
+            }}
+            placeholder="Search or add a category…"
+            className="w-full px-3.5 py-3 bg-white border-[1.5px] border-neutral-200 rounded-[14px] text-sm font-medium text-neutral-900 outline-none focus:border-primary-600 transition-colors"
+          />
+          {catOpen && (filtered.length > 0 || isNew) && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-[14px] shadow-md z-30 overflow-hidden">
+              {filtered.map((cat) => {
+                const active = selectedCats.has(cat.label)
+                return (
+                  <button
+                    key={cat.label}
+                    type="button"
+                    onMouseDown={() => selectFromDropdown(cat.label)}
+                    className={`w-full text-left px-4 py-2.5 text-sm font-medium flex items-center gap-2.5 transition-colors ${
+                      active ? 'text-primary-600 font-bold bg-primary-50' : 'text-neutral-700 hover:bg-primary-50 hover:text-primary-700'
+                    }`}
+                  >
+                    <span>{cat.icon}</span>
+                    <span className="flex-1">{cat.label}</span>
+                    {active && (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5"><path d="M20 6L9 17l-5-5"/></svg>
+                    )}
+                  </button>
+                )
+              })}
+              {isNew && (
+                <button
+                  type="button"
+                  onMouseDown={() => addCustomCat(catQuery)}
+                  className="w-full text-left px-4 py-2.5 text-sm font-bold text-primary-600 flex items-center gap-2 border-t border-neutral-100 hover:bg-primary-50 transition-colors"
+                >
+                  <Plus size={14} /> Add "{catQuery.trim()}"
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* ── Brand ── */}
         <p className="text-[11px] font-extrabold uppercase tracking-wide text-neutral-400 mt-4 mb-2">

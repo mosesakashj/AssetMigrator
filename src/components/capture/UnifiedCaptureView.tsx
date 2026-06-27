@@ -2,8 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import { Html5Qrcode } from 'html5-qrcode'
 import { Camera } from 'lucide-react'
 import { MOCK_BARCODE_DB } from '../../types/asset'
-import { analyzeAssetPhoto } from '../../services/aiService'
-import type { AssetFields, AIRecognitionResult } from '../../types/asset'
+import type { AssetFields } from '../../types/asset'
 
 export interface UnifiedCaptureHandle {
   triggerCapture: () => void
@@ -13,32 +12,36 @@ export interface UnifiedCaptureHandle {
 interface Props {
   onBarcodeMatch: (fields: Partial<AssetFields>, barcode: string) => void
   onBarcodeNoMatch: (code: string) => void
-  onPhotoResult: (result: AIRecognitionResult, imageBase64: string) => void
-  onPhotoError: (msg: string) => void
+  onPhotoCaptured: (imageBase64: string) => void
 }
 
 export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(function UnifiedCaptureView(
-  { onBarcodeMatch, onBarcodeNoMatch, onPhotoResult, onPhotoError },
+  { onBarcodeMatch, onBarcodeNoMatch, onPhotoCaptured },
   ref
 ) {
   const [scanning, setScanning] = useState(false)
   const [matchedBarcode, setMatchedBarcode] = useState<string | null>(null)
   const [scanError, setScanError] = useState('')
-  const [analyzing, setAnalyzing] = useState(false)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [flash, setFlash] = useState(false)
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const SCANNER_DIV = 'unified-scanner-div'
 
+  // Start scanner whenever the live-view div is mounted (photoPreview === null)
   useEffect(() => {
+    if (photoPreview !== null) return
     startScan()
     return () => { try { scannerRef.current?.stop().catch(() => {}) } catch {} }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [photoPreview])
 
   async function startScan() {
     setScanError('')
+    if (scannerRef.current) {
+      try { await scannerRef.current.stop() } catch {}
+      scannerRef.current = null
+    }
     try {
       const scanner = new Html5Qrcode(SCANNER_DIV)
       scannerRef.current = scanner
@@ -57,14 +60,12 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
         },
         () => {}
       )
-      // Force the video to fill the container — html5-qrcode sets inline width/height
       const container = document.getElementById(SCANNER_DIV)
       if (container) {
         const video = container.querySelector('video') as HTMLVideoElement | null
         if (video) {
           video.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;'
         }
-        // Hide the library's own shaded border overlay (the div that isn't the video wrapper)
         container.querySelectorAll<HTMLElement>('div').forEach((d) => {
           if (!d.querySelector('video')) d.style.display = 'none'
         })
@@ -72,20 +73,6 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
     } catch {
       setScanning(false)
       setScanError('Camera access denied.')
-    }
-  }
-
-  async function processPhoto(base64: string, mimeType = 'image/jpeg') {
-    setAnalyzing(true)
-    try {
-      const result = await analyzeAssetPhoto(base64, mimeType as 'image/jpeg')
-      onPhotoResult(result, base64)
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'AI analysis failed'
-      onPhotoError(msg.includes('API_KEY') ? 'Add VITE_ANTHROPIC_API_KEY to .env to enable AI.' : msg)
-    } finally {
-      setAnalyzing(false)
-      // keep photoPreview set so the image stays visible
     }
   }
 
@@ -97,7 +84,6 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
     const video = document.querySelector(`#${SCANNER_DIV} video`) as HTMLVideoElement | null
     if (!video || video.readyState < 2 || !video.videoWidth) return false
 
-    // Flash effect
     setFlash(true)
     setTimeout(() => setFlash(false), 150)
 
@@ -110,7 +96,7 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
     const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
     const base64 = dataUrl.split(',')[1]
     setPhotoPreview(dataUrl)
-    processPhoto(base64, 'image/jpeg')
+    onPhotoCaptured(base64)
     return true
   }
 
@@ -120,7 +106,7 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
       const dataUrl = e.target?.result as string
       const base64 = dataUrl.split(',')[1]
       setPhotoPreview(dataUrl)
-      processPhoto(base64, file.type)
+      onPhotoCaptured(base64)
     }
     reader.readAsDataURL(file)
   }
@@ -135,7 +121,6 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
 
   return (
     <div className="mb-3">
-      {/* Fallback file picker (used when camera feed unavailable) */}
       <input
         ref={fileRef}
         type="file"
@@ -151,46 +136,24 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
       <div className="relative w-full aspect-[4/3] rounded-[16px] overflow-hidden bg-[#0B0B0D]">
 
         {photoPreview ? (
-          /* ── Photo view ── */
           <>
             <img src={photoPreview} alt="captured" className="absolute inset-0 w-full h-full object-cover" />
 
-            {/* Analyzing overlay */}
-            {analyzing && (
-              <div className="absolute inset-0 bg-black/55 flex flex-col items-center justify-center gap-2 z-10">
-                <div className="w-7 h-7 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <p className="text-white text-xs font-bold">AI analyzing…</p>
-              </div>
-            )}
-
-            {/* Retake button — top-right */}
-            {!analyzing && (
-              <button
-                type="button"
-                onClick={retakePhoto}
-                className="absolute top-2.5 right-2.5 flex items-center gap-1 bg-black/60 backdrop-blur-sm rounded-full px-3 py-1.5 z-10"
-              >
-                <Camera size={11} color="white" />
-                <span className="text-[10px] font-bold text-white">Retake</span>
-              </button>
-            )}
-
-            {/* AI success badge — bottom */}
-            {!analyzing && (
-              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-4 pt-6 pb-3">
-                <p className="text-[10px] font-extrabold text-success-400 uppercase tracking-wide">AI fields filled ✓</p>
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={retakePhoto}
+              className="absolute top-2.5 right-2.5 flex items-center gap-1 bg-black/60 backdrop-blur-sm rounded-full px-3 py-1.5 z-10"
+            >
+              <Camera size={11} color="white" />
+              <span className="text-[10px] font-bold text-white">Retake</span>
+            </button>
           </>
         ) : (
-          /* ── Scanner / live view ── */
           <>
             <div id={SCANNER_DIV} className="absolute inset-0" />
 
-            {/* Shutter flash */}
             {flash && <div className="absolute inset-0 bg-white z-20 pointer-events-none" />}
 
-            {/* Static overlay when idle */}
             {!scanning && !matchedBarcode && (
               <>
                 <div className="absolute inset-0 pointer-events-none" style={{
@@ -214,7 +177,6 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
               </>
             )}
 
-            {/* Scanning status */}
             {scanning && (
               <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-black/60 backdrop-blur-sm rounded-full px-2.5 py-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-error-400" style={{ animation: 'chatDotBlink 1s ease-in-out infinite' }} />
@@ -222,7 +184,6 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
               </div>
             )}
 
-            {/* Capture button — bottom-right */}
             {scanning && (
               <button
                 type="button"
@@ -235,7 +196,6 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
               </button>
             )}
 
-            {/* Match badge */}
             {matchedBarcode && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/40">
                 <div className="bg-success-500/90 backdrop-blur-sm rounded-[12px] px-4 py-2.5 flex items-center gap-2">

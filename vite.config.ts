@@ -3,6 +3,13 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  server: {
+    allowedHosts: [
+      "*",
+      ".ngrok-free.app",
+      ".ngrok-free.dev",
+    ]
+  },
   plugins: [
     react(),
     VitePWA({

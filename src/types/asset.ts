@@ -51,14 +51,6 @@ export interface SessionClassify {
   priceUnit: PriceUnit
 }
 
-export interface AIRecognitionResult {
-  name?: string
-  description?: string
-  category?: string
-  material?: string
-  condition?: string
-  suggestedPrice?: string
-}
 
 export const CATEGORIES: { label: AssetCategory | string; icon: string }[] = [
   { label: 'Choker', icon: '📿' },

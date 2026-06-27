@@ -37,7 +37,7 @@ function getSpeechRec() {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null
 }
 
-type VoiceState = 'idle' | 'listening' | 'processing' | 'saved'
+type VoiceState = 'idle' | 'listening' | 'processing'
 
 export function Step2CapturePage() {
   const navigate = useNavigate()
@@ -59,8 +59,6 @@ export function Step2CapturePage() {
 
   const [voiceState, setVoiceState] = useState<VoiceState>('idle')
   const [voiceLive, setVoiceLive] = useState('')
-  const [voiceSessionCount, setVoiceSessionCount] = useState(0)
-  const [lastSavedName, setLastSavedName] = useState('')
 
   const sessionCount = sessionAssets.length
 
@@ -110,38 +108,19 @@ export function Step2CapturePage() {
 
       try {
         const parsed = await parseVoiceTranscript(text)
-        if (parsed.name && parsed.price) {
-          const priceUnit = (parsed.priceUnit as PriceUnit) ?? 'Per Day'
-          addSessionAsset({
-            ...makeEmptyFields(classify.priceUnit),
-            id: Date.now().toString(36) + Math.random().toString(36).slice(2),
-            name: parsed.name,
-            price: parsed.price,
-            priceUnit,
-            qty: parsed.qty ?? '1',
-            branch: classify.branch,
-            sessionId,
-            createdAt: Date.now(),
-            category: classify.category,
-            brand: classify.brand,
-            model: classify.model,
-          })
-          setLastSavedName(parsed.name)
-          setVoiceSessionCount((c) => c + 1)
-          setVoiceState('saved')
-          setTimeout(() => {
-            if (isVoiceSessionRef.current) startOneUtterance()
-          }, 1400)
-        } else {
-          // partial info — fill fields so user can complete manually
-          const partial: Partial<AssetFields> = {}
-          const keys: (keyof AutoFilled)[] = []
-          if (parsed.name)  { partial.name  = parsed.name;  keys.push('name') }
-          if (parsed.price) { partial.price = parsed.price; keys.push('price') }
-          if (parsed.priceUnit) partial.priceUnit = parsed.priceUnit as PriceUnit
-          if (parsed.qty)   partial.qty = parsed.qty
+        const partial: Partial<AssetFields> = {}
+        const keys: (keyof AutoFilled)[] = []
+        if (parsed.name)      { partial.name      = parsed.name;                    keys.push('name') }
+        if (parsed.price)     { partial.price     = parsed.price;                   keys.push('price') }
+        if (parsed.priceUnit) { partial.priceUnit = parsed.priceUnit as PriceUnit }
+        if (parsed.qty)       { partial.qty       = parsed.qty }
+
+        if (keys.length > 0) {
           applyAutoFill(partial, keys)
-          // restart listening for more
+          isVoiceSessionRef.current = false
+          setVoiceState('idle')
+        } else {
+          // nothing extracted — keep listening
           setTimeout(() => { if (isVoiceSessionRef.current) startOneUtterance() }, 400)
         }
       } catch {
@@ -337,22 +316,20 @@ export function Step2CapturePage() {
           onPhotoError={(e) => show(e)}
         />
 
-        {/* ── Voice session card — tap mic to start/stop ── */}
+        {/* ── Voice card — tap mic, fills fields below ── */}
         <button
           type="button"
           onClick={isVoiceActive ? stopVoiceSession : startVoiceSession}
           className={`w-full mb-3 flex items-center gap-3 rounded-2xl border-[1.5px] px-4 py-3 active:scale-[0.98] transition-all ${
-            voiceState === 'saved'       ? 'border-success-400 bg-success-50'
-            : voiceState === 'processing'? 'border-neutral-200 bg-neutral-50'
-            : isVoiceActive              ? 'border-error-300 bg-red-50'
-            :                              'border-neutral-200 bg-white'
+            voiceState === 'processing' ? 'border-neutral-200 bg-neutral-50'
+            : isVoiceActive             ? 'border-error-300 bg-red-50'
+            :                             'border-neutral-200 bg-white'
           }`}
         >
           {/* Mic icon */}
           <div className={`w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center ${
-            voiceState === 'saved'        ? 'bg-success-500'
-            : voiceState === 'processing' ? 'bg-neutral-300'
-            : isVoiceActive               ? 'bg-error-500'
+            voiceState === 'processing' ? 'bg-neutral-300'
+            : isVoiceActive             ? 'bg-error-500'
             : ''
           }`}
             style={
@@ -365,29 +342,20 @@ export function Step2CapturePage() {
           >
             {voiceState === 'processing'
               ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              : voiceState === 'saved'
-              ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
               : <Mic size={18} color="white" strokeWidth={2} />
             }
           </div>
 
           {/* Status text */}
           <div className="flex-1 min-w-0 text-left">
-            {voiceState === 'saved' ? (
-              <>
-                <p className="text-[11px] font-extrabold text-success-700 uppercase tracking-wide">Saved!</p>
-                <p className="text-[13px] font-bold text-neutral-900 truncate mt-px">"{lastSavedName}"</p>
-              </>
-            ) : voiceState === 'processing' ? (
+            {voiceState === 'processing' ? (
               <p className="text-[12.5px] font-bold text-neutral-600">Parsing with AI…</p>
             ) : isVoiceActive ? (
               <>
                 <div className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-error-500 flex-shrink-0"
                     style={{ animation: 'chatDotBlink 1s ease-in-out infinite' }} />
-                  <p className="text-[11px] font-extrabold text-error-600 uppercase tracking-wide">
-                    Listening · {voiceSessionCount} saved
-                  </p>
+                  <p className="text-[11px] font-extrabold text-error-600 uppercase tracking-wide">Listening…</p>
                 </div>
                 <p className="text-[12px] font-medium text-neutral-700 truncate mt-px">
                   {voiceLive || <span className="text-neutral-400">Say: name · price · qty…</span>}
@@ -395,9 +363,9 @@ export function Step2CapturePage() {
               </>
             ) : (
               <>
-                <p className="text-[12.5px] font-bold text-neutral-800">Start voice session</p>
+                <p className="text-[12.5px] font-bold text-neutral-800">Tap to use voice</p>
                 <p className="text-[11px] font-medium text-neutral-400 mt-px">
-                  Say <span className="text-neutral-600 font-semibold">name · price · qty</span> — auto-saves each asset
+                  Say <span className="text-neutral-600 font-semibold">name · price · qty</span> — fills fields below
                 </p>
               </>
             )}
@@ -528,7 +496,7 @@ export function Step2CapturePage() {
         <button type="button" onClick={() => captureRef.current?.triggerCapture()}
           className="flex-1 py-3.5 rounded-xl border-[1.5px] border-primary-200 bg-primary-50 text-primary-600 flex flex-col items-center justify-center gap-0.5">
           <Camera size={16} />
-          <span className="text-[10px] font-bold mt-0.5">Capture</span>
+          <span className="text-[10px] font-bold mt-0.5">Upload</span>
         </button>
 
         <button onClick={saveAndNext}

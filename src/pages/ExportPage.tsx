@@ -33,7 +33,7 @@ export function ExportPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-neutral-100 max-w-md mx-auto animate-slide-up">
+    <div className="flex flex-col h-[100dvh] bg-neutral-100 max-w-md mx-auto animate-slide-up">
       <TopBar title="Export Assets" onBack={() => navigate('/')} />
 
       {/* Stats bar */}

@@ -7,7 +7,7 @@ import { ExportPage } from './pages/ExportPage'
 export function App() {
   return (
     <BrowserRouter>
-      <div className="h-screen overflow-hidden bg-[#FDF4F9] flex justify-center">
+      <div className="h-[100dvh] overflow-hidden bg-[#FDF4F9] flex justify-center">
         <div className="w-full max-w-md relative h-full overflow-hidden">
           <Routes>
             <Route path="/" element={<AssetsListPage />} />

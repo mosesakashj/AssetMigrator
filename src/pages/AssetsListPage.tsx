@@ -35,7 +35,7 @@ export function AssetsListPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-neutral-100 max-w-md mx-auto relative">
+    <div className="flex flex-col h-[100dvh] bg-neutral-100 max-w-md mx-auto relative">
       <TopBar
         title="Assets"
         right={

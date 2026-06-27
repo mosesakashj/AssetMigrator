@@ -220,7 +220,7 @@ export function Step2CapturePage() {
   // ── Success screen ─────────────────────────────────────────────────
   if (showSuccess) {
     return (
-      <div className="flex flex-col h-screen bg-neutral-100 max-w-md mx-auto animate-fade-in">
+      <div className="flex flex-col h-[100dvh] bg-neutral-100 max-w-md mx-auto animate-fade-in">
         <TopBar title="Session Complete" />
         <div className="flex-1 flex flex-col items-center justify-center gap-5 px-8 text-center">
           {syncState === 'syncing' && (
@@ -272,7 +272,7 @@ export function Step2CapturePage() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-neutral-100 max-w-md mx-auto animate-slide-up">
+    <div className="flex flex-col h-[100dvh] bg-neutral-100 max-w-md mx-auto animate-slide-up">
       <TopBar title="Add Asset Session" onBack={handleBack} />
 
       {/* Session bar */}

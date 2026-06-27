@@ -88,7 +88,7 @@ export function Step1ClassifyPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-neutral-100 max-w-md mx-auto animate-slide-up">
+    <div className="flex flex-col h-[100dvh] bg-neutral-100 max-w-md mx-auto animate-slide-up">
       <TopBar title="Add Asset" onBack={() => navigate('/')} />
 
       {/* Progress */}

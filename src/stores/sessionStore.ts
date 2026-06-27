@@ -19,6 +19,7 @@ export const useSessionStore = create<SessionState>((set) => ({
     brand: '',
     model: '',
     branch: 'Bangalore HQ',
+    priceUnit: 'Per Day',
   },
   sessionId: makeSessionId(),
   setClassify: (c) => set({ classify: c }),

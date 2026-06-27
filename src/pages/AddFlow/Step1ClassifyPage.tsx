@@ -6,7 +6,13 @@ import { BrandComboBox } from '../../components/shared/BrandComboBox'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useAssetsStore } from '../../stores/assetsStore'
 import { CATEGORIES, BRANCHES } from '../../types/asset'
-import type { AssetCategory } from '../../types/asset'
+import type { AssetCategory, PriceUnit } from '../../types/asset'
+
+const PRICE_UNITS: { value: PriceUnit; label: string; desc: string }[] = [
+  { value: 'Per Day', label: '/Day', desc: 'Daily rental' },
+  { value: 'Per Hour', label: '/Hr', desc: 'Hourly rental' },
+  { value: 'Flat', label: 'Flat', desc: 'One-time fee' },
+]
 
 const CUSTOM_SENTINEL = '__custom__'
 
@@ -20,6 +26,7 @@ export function Step1ClassifyPage() {
   const [brand, setBrand] = useState('')
   const [model, setModel] = useState('')
   const [branch, setBranch] = useState(BRANCHES[0])
+  const [priceUnit, setPriceUnit] = useState<PriceUnit>('Per Day')
 
   const isCustomCat = selectedCat.label === CUSTOM_SENTINEL
   const finalCategory = isCustomCat ? customCat.trim() || 'Custom' : selectedCat.label
@@ -34,6 +41,7 @@ export function Step1ClassifyPage() {
       brand,
       model,
       branch,
+      priceUnit,
     })
     navigate('/add/step2')
   }
@@ -139,6 +147,28 @@ export function Step1ClassifyPage() {
               <div className={`w-[18px] h-[18px] rounded-full border-2 flex-shrink-0 transition-all ${
                 branch === b ? 'border-primary-600 bg-primary-600 shadow-[inset_0_0_0_3px_white]' : 'border-neutral-300'
               }`} />
+            </button>
+          ))}
+        </div>
+
+        {/* ── Pricing Method ── */}
+        <p className="text-[11px] font-extrabold uppercase tracking-wide text-neutral-400 mt-4 mb-2">Pricing Method</p>
+        <div className="flex gap-2">
+          {PRICE_UNITS.map((u) => (
+            <button
+              key={u.value}
+              type="button"
+              onClick={() => setPriceUnit(u.value)}
+              className={`flex-1 flex flex-col items-center gap-1 py-3 px-1 border-[1.5px] rounded-[14px] transition-all ${
+                priceUnit === u.value
+                  ? 'border-primary-600 bg-primary-50 shadow-sm'
+                  : 'border-neutral-200 bg-white hover:border-primary-200'
+              }`}
+            >
+              <span className={`text-sm font-extrabold ${priceUnit === u.value ? 'text-primary-600' : 'text-neutral-700'}`}>
+                {u.label}
+              </span>
+              <span className="text-[10px] font-medium text-neutral-400 text-center leading-tight">{u.desc}</span>
             </button>
           ))}
         </div>

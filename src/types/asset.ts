@@ -48,6 +48,7 @@ export interface SessionClassify {
   brand: string
   model: string
   branch: string
+  priceUnit: PriceUnit
 }
 
 export interface AIRecognitionResult {

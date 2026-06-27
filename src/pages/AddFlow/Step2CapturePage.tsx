@@ -13,10 +13,10 @@ import type { AssetFields, PriceUnit, AIRecognitionResult } from '../../types/as
 
 interface AutoFilled { name?: boolean; price?: boolean; description?: boolean; material?: boolean }
 
-function makeEmptyFields(): AssetFields {
+function makeEmptyFields(priceUnit: PriceUnit = 'Per Day'): AssetFields {
   return {
     name: '', description: '', category: '', brand: '', model: '',
-    material: '', condition: '', price: '', qty: '1', priceUnit: 'Per Day',
+    material: '', condition: '', price: '', qty: '1', priceUnit,
     imageBase64: null, variantAttributes: [], variantCombos: [],
   }
 }
@@ -50,7 +50,7 @@ export function Step2CapturePage() {
   const transcriptRef = useRef('')
   const isVoiceSessionRef = useRef(false)
 
-  const [fields, setFields] = useState<AssetFields>(makeEmptyFields())
+  const [fields, setFields] = useState<AssetFields>(() => makeEmptyFields(classify.priceUnit))
   const [autoFilled, setAutoFilled] = useState<AutoFilled>({})
   const [showVariants, setShowVariants] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
@@ -113,7 +113,7 @@ export function Step2CapturePage() {
         if (parsed.name && parsed.price) {
           const priceUnit = (parsed.priceUnit as PriceUnit) ?? 'Per Day'
           addSessionAsset({
-            ...makeEmptyFields(),
+            ...makeEmptyFields(classify.priceUnit),
             id: Date.now().toString(36) + Math.random().toString(36).slice(2),
             name: parsed.name,
             price: parsed.price,
@@ -203,7 +203,7 @@ export function Step2CapturePage() {
       model: fields.model || classify.model,
     })
     show(`✓ "${fields.name}" added`)
-    setFields(makeEmptyFields())
+    setFields(makeEmptyFields(classify.priceUnit))
     setAutoFilled({})
     setShowVariants(false)
   }

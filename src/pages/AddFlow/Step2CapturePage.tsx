@@ -52,7 +52,6 @@ export function Step2CapturePage() {
 
   const [fields, setFields] = useState<AssetFields>(() => makeEmptyFields(classify.priceUnit))
   const [autoFilled, setAutoFilled] = useState<AutoFilled>({})
-  const [showVariants, setShowVariants] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [syncState, setSyncState] = useState<'syncing' | 'done' | 'failed'>('syncing')
   const [failedCount, setFailedCount] = useState(0)
@@ -184,7 +183,6 @@ export function Step2CapturePage() {
     show(`✓ "${fields.name}" added`)
     setFields(makeEmptyFields(classify.priceUnit))
     setAutoFilled({})
-    setShowVariants(false)
     captureRef.current?.resetPhoto()
   }
 
@@ -460,29 +458,12 @@ export function Step2CapturePage() {
         )}
 
         {/* Variants */}
-        <div className="mb-3">
-          <button type="button"
-            onClick={() => {
-              const next = !showVariants
-              setShowVariants(next)
-              if (!next) setFields((f) => ({ ...f, variantAttributes: [], variantCombos: [] }))
-            }}
-            className="w-full flex items-center justify-between bg-white border-[1.5px] border-neutral-200 rounded-xl px-4 py-3">
-            <div className="text-left">
-              <div className="text-sm font-bold text-neutral-900">This asset has variants</div>
-              <div className="text-xs font-medium text-neutral-400 mt-0.5">e.g. sizes, colors or capacities</div>
-            </div>
-            <ToggleSwitch on={showVariants} />
-          </button>
-          {showVariants && (
-            <VariantBuilder
-              attributes={fields.variantAttributes}
-              combos={fields.variantCombos}
-              onAttributesChange={(a) => setField('variantAttributes', a)}
-              onCombosChange={(c) => setField('variantCombos', c)}
-            />
-          )}
-        </div>
+        <VariantBuilder
+          attributes={fields.variantAttributes}
+          combos={fields.variantCombos}
+          onAttributesChange={(a) => setField('variantAttributes', a)}
+          onCombosChange={(c) => setField('variantCombos', c)}
+        />
       </div>
 
       {/* ── Footer ── */}
@@ -517,13 +498,5 @@ function AutoTag() {
     <span className="text-[9.5px] font-extrabold text-success-600 bg-success-50 border border-green-200 rounded-full px-1.5 py-px tracking-wide ml-1">
       AUTO
     </span>
-  )
-}
-
-function ToggleSwitch({ on }: { on: boolean }) {
-  return (
-    <div className={`w-11 h-6 rounded-full relative flex-shrink-0 transition-colors ${on ? 'bg-primary-600' : 'bg-neutral-200'}`}>
-      <div className={`absolute top-[3px] left-[3px] w-[18px] h-[18px] rounded-full bg-white shadow-sm transition-transform ${on ? 'translate-x-[18px]' : ''}`} />
-    </div>
   )
 }

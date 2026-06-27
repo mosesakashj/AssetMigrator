@@ -15,10 +15,14 @@ export function ExportPage() {
   const [pushing, setPushing] = useState(false)
   const [pushed, setPushed] = useState<string | null>(null)
 
+  const unpushedAssets = assets.filter(
+    (a) => a.pushStatus === 'failed' || a.pushStatus === undefined
+  )
+
   async function handlePush() {
     setPushing(true)
     try {
-      const result = await mockApiPush(assets)
+      const result = await mockApiPush(unpushedAssets)
       setPushed(result.message)
       show('✓ ' + result.message)
     } catch {
@@ -73,7 +77,7 @@ export function ExportPage() {
         </button>
         <button
           onClick={handlePush}
-          disabled={pushing || assets.length === 0 || !!pushed}
+          disabled={pushing || unpushedAssets.length === 0 || !!pushed}
           className="w-full py-3.5 rounded-lg text-sm font-extrabold text-white flex items-center justify-center gap-2 disabled:opacity-40"
           style={{ background: 'linear-gradient(100deg,#9E1568,#C21A7F,#E8197D)', boxShadow: '0 4px 14px rgba(194,26,127,0.3)' }}
         >

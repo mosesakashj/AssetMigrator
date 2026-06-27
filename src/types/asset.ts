@@ -31,12 +31,15 @@ export interface AssetFields {
   variantCombos: VariantCombo[]
 }
 
+export type PushStatus = 'pending' | 'queued' | 'failed'
+
 export interface SavedAsset extends AssetFields {
   id: string
   branch: string
   sessionId: string
   createdAt: number
   isNew?: boolean
+  pushStatus?: PushStatus
 }
 
 export interface SessionClassify {

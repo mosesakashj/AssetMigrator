@@ -6,16 +6,28 @@ interface AssetCardProps {
 }
 
 export function AssetCard({ asset, style }: AssetCardProps) {
+  const badge =
+    asset.pushStatus === 'failed' ? (
+      <span className="absolute top-2 right-2 text-[8.5px] font-extrabold tracking-wide text-red-600 bg-red-50 border border-red-200 rounded-full px-1.5 py-px flex items-center gap-0.5">
+        <span className="w-1 h-1 rounded-full bg-red-500 inline-block" />
+        FAILED
+      </span>
+    ) : asset.pushStatus === 'pending' ? (
+      <span className="absolute top-2 right-2">
+        <span className="w-3 h-3 border-[1.5px] border-neutral-400 border-t-transparent rounded-full animate-spin inline-block" />
+      </span>
+    ) : asset.isNew ? (
+      <span className="absolute top-2 right-2 text-[8.5px] font-extrabold tracking-wide text-success-600 bg-success-50 border border-green-200 rounded-full px-1.5 py-px">
+        NEW
+      </span>
+    ) : null
+
   return (
     <div
       className="flex gap-3 bg-white border border-neutral-200 rounded-lg shadow-sm p-3 relative animate-asset-in"
       style={style}
     >
-      {asset.isNew && (
-        <span className="absolute top-2 right-2 text-[8.5px] font-extrabold tracking-wide text-success-600 bg-success-50 border border-green-200 rounded-full px-1.5 py-px">
-          NEW
-        </span>
-      )}
+      {badge}
       {asset.imageBase64 ? (
         <img
           src={`data:image/jpeg;base64,${asset.imageBase64}`}
@@ -24,7 +36,6 @@ export function AssetCard({ asset, style }: AssetCardProps) {
         />
       ) : (
         <div className="w-14 h-14 rounded-[11px] bg-primary-50 flex-shrink-0 flex items-center justify-center text-2xl">
-          {/* category icon via emoji from category list */}
           {getCategoryIcon(asset.category)}
         </div>
       )}

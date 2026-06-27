@@ -1,18 +1,38 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Package, FileDown } from 'lucide-react'
+import { AlertTriangle, FileDown, Loader, Plus, Package } from 'lucide-react'
 import { useAssetsStore } from '../stores/assetsStore'
+import { mockApiPush } from '../services/apiService'
 import { AssetCard } from '../components/asset/AssetCard'
 import { TopBar } from '../components/layout/TopBar'
 
 export function AssetsListPage() {
   const navigate = useNavigate()
-  const { assets, clearNewBadges } = useAssetsStore()
+  const { assets, clearNewBadges, setAssetsPushStatus, retryFailedAssets } = useAssetsStore()
+  const [retrying, setRetrying] = useState(false)
 
   useEffect(() => {
     const t = setTimeout(clearNewBadges, 4000)
     return () => clearTimeout(t)
   }, [assets, clearNewBadges])
+
+  const failedAssets = assets.filter((a) => a.pushStatus === 'failed')
+
+  async function handleRetry() {
+    setRetrying(true)
+    const toRetry = retryFailedAssets()
+    try {
+      const result = await mockApiPush(toRetry)
+      const failedIds = result.failedIds ?? []
+      const succeededIds = toRetry.map((a) => a.id).filter((id) => !failedIds.includes(id))
+      if (succeededIds.length > 0) setAssetsPushStatus(succeededIds, 'queued')
+      if (failedIds.length > 0) setAssetsPushStatus(failedIds, 'failed')
+    } catch {
+      setAssetsPushStatus(toRetry.map((a) => a.id), 'failed')
+    } finally {
+      setRetrying(false)
+    }
+  }
 
   return (
     <div className="flex flex-col h-screen bg-neutral-100 max-w-md mx-auto relative">
@@ -29,6 +49,25 @@ export function AssetsListPage() {
           ) : undefined
         }
       />
+
+      {failedAssets.length > 0 && (
+        <div className="mx-3 mt-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 flex items-center justify-between gap-2 animate-fade-in flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={15} className="text-red-500 flex-shrink-0" />
+            <p className="text-[12px] font-bold text-red-700">
+              {failedAssets.length} asset{failedAssets.length !== 1 ? 's' : ''} failed to sync
+            </p>
+          </div>
+          <button
+            onClick={handleRetry}
+            disabled={retrying}
+            className="text-[11px] font-extrabold text-white bg-red-500 rounded-full px-3 py-1 disabled:opacity-50 flex items-center gap-1.5 flex-shrink-0"
+          >
+            {retrying && <Loader size={11} className="animate-spin" />}
+            {retrying ? 'Retrying…' : 'Retry'}
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto scrollbar-none relative">
         {assets.length === 0 ? (

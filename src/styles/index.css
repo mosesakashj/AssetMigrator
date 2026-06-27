@@ -6,6 +6,10 @@
   * {
     -webkit-tap-highlight-color: transparent;
   }
+  html, body, #root {
+    height: 100%;
+    overflow: hidden;
+  }
   body {
     font-family: 'Inter', -apple-system, sans-serif;
     background: #FDF4F9;

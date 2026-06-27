@@ -46,7 +46,7 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
       setMatchedBarcode(null)
       await scanner.start(
         { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 200, height: 120 } },
+        { fps: 10 },
         (code) => {
           try { scanner.stop().catch(() => {}) } catch {}
           setScanning(false)
@@ -57,6 +57,18 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
         },
         () => {}
       )
+      // Force the video to fill the container — html5-qrcode sets inline width/height
+      const container = document.getElementById(SCANNER_DIV)
+      if (container) {
+        const video = container.querySelector('video') as HTMLVideoElement | null
+        if (video) {
+          video.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;'
+        }
+        // Hide the library's own shaded border overlay (the div that isn't the video wrapper)
+        container.querySelectorAll<HTMLElement>('div').forEach((d) => {
+          if (!d.querySelector('video')) d.style.display = 'none'
+        })
+      }
     } catch {
       setScanning(false)
       setScanError('Camera access denied.')
@@ -136,7 +148,7 @@ export const UnifiedCaptureView = forwardRef<UnifiedCaptureHandle, Props>(functi
         }}
       />
 
-      <div className="relative h-64 rounded-[16px] overflow-hidden bg-[#0B0B0D]">
+      <div className="relative w-full aspect-[4/3] rounded-[16px] overflow-hidden bg-[#0B0B0D]">
 
         {photoPreview ? (
           /* ── Photo view ── */

@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, Camera, CheckCircle, Loader, Mic, Square } from 'lucide-react'
+import { AlertTriangle, Camera, CheckCircle, Loader, Mic } from 'lucide-react'
 import { TopBar } from '../../components/layout/TopBar'
 import { UnifiedCaptureView, type UnifiedCaptureHandle } from '../../components/capture/UnifiedCaptureView'
 import { VariantBuilder } from '../../components/shared/VariantBuilder'
@@ -336,93 +336,82 @@ export function Step2CapturePage() {
           onPhotoError={(e) => show(e)}
         />
 
-        {/* ── Voice session card ── */}
-        {!isVoiceActive ? (
-          /* Idle — start session button */
-          <button
-            type="button"
-            onClick={startVoiceSession}
-            className="w-full mb-3 flex items-center gap-3 bg-white border-[1.5px] border-neutral-200 rounded-2xl px-4 py-3 active:scale-[0.98] transition-transform"
+        {/* ── Voice session card — tap mic to start/stop ── */}
+        <button
+          type="button"
+          onClick={isVoiceActive ? stopVoiceSession : startVoiceSession}
+          className={`w-full mb-3 flex items-center gap-3 rounded-2xl border-[1.5px] px-4 py-3 active:scale-[0.98] transition-all ${
+            voiceState === 'saved'       ? 'border-success-400 bg-success-50'
+            : voiceState === 'processing'? 'border-neutral-200 bg-neutral-50'
+            : isVoiceActive              ? 'border-error-300 bg-red-50'
+            :                              'border-neutral-200 bg-white'
+          }`}
+        >
+          {/* Mic icon */}
+          <div className={`w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center ${
+            voiceState === 'saved'        ? 'bg-success-500'
+            : voiceState === 'processing' ? 'bg-neutral-300'
+            : isVoiceActive               ? 'bg-error-500'
+            : ''
+          }`}
+            style={
+              !isVoiceActive
+                ? { background: 'linear-gradient(135deg,#9E1568,#E8197D)', boxShadow: '0 3px 10px rgba(194,26,127,0.28)' }
+                : voiceState === 'listening'
+                ? { animation: 'chatMicPulse 1s ease-in-out infinite' }
+                : undefined
+            }
           >
-            <div className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg,#9E1568,#E8197D)', boxShadow: '0 3px 10px rgba(194,26,127,0.28)' }}>
-              <Mic size={18} color="white" strokeWidth={2} />
-            </div>
-            <div className="text-left">
-              <p className="text-[12.5px] font-bold text-neutral-800">Start voice session</p>
-              <p className="text-[11px] font-medium text-neutral-400 mt-px">
-                Say <span className="text-neutral-600 font-semibold">name · price · qty</span> — auto-saves each asset
-              </p>
-            </div>
-          </button>
-        ) : (
-          /* Active session card */
-          <div className={`w-full mb-3 rounded-2xl border-[1.5px] overflow-hidden transition-all ${
-            voiceState === 'saved' ? 'border-success-400 bg-success-50'
-            : voiceState === 'processing' ? 'border-neutral-200 bg-neutral-50'
-            : 'border-error-300 bg-red-50'
-          }`}>
-            <div className="px-4 pt-3 pb-2 flex items-center gap-3">
-              {/* Icon */}
-              <div className={`w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center ${
-                voiceState === 'saved' ? 'bg-success-500'
-                : voiceState === 'processing' ? 'bg-neutral-300'
-                : 'bg-error-500'
-              }`} style={voiceState === 'listening' ? { animation: 'chatMicPulse 1s ease-in-out infinite' } : undefined}>
-                {voiceState === 'processing'
-                  ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  : voiceState === 'saved'
-                  ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
-                  : <Mic size={18} color="white" strokeWidth={2} />
-                }
-              </div>
-
-              {/* Status text */}
-              <div className="flex-1 min-w-0">
-                {voiceState === 'saved' ? (
-                  <>
-                    <p className="text-[11px] font-extrabold text-success-700 uppercase tracking-wide">Saved!</p>
-                    <p className="text-[13px] font-bold text-neutral-900 truncate mt-px">"{lastSavedName}"</p>
-                  </>
-                ) : voiceState === 'processing' ? (
-                  <p className="text-[12.5px] font-bold text-neutral-600">Parsing with AI…</p>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-error-500 flex-shrink-0"
-                        style={{ animation: 'chatDotBlink 1s ease-in-out infinite' }} />
-                      <p className="text-[11px] font-extrabold text-error-600 uppercase tracking-wide">
-                        Listening · {voiceSessionCount} saved
-                      </p>
-                    </div>
-                    <p className="text-[12px] font-medium text-neutral-700 truncate mt-px">
-                      {voiceLive || <span className="text-neutral-400">Say: name · price · qty…</span>}
-                    </p>
-                  </>
-                )}
-              </div>
-
-              {/* Waveform (listening only) */}
-              {voiceState === 'listening' && (
-                <div className="flex items-end gap-0.5 h-5 flex-shrink-0">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="w-0.5 rounded-sm bg-error-400"
-                      style={{ height: 6, animation: `wfBounce 0.9s ease-in-out ${i * 0.12}s infinite` }} />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Stop row */}
-            <button
-              type="button"
-              onClick={stopVoiceSession}
-              className="w-full flex items-center justify-center gap-1.5 py-2 border-t border-neutral-200 text-[11px] font-bold text-neutral-500 bg-white/60"
-            >
-              <Square size={10} fill="currentColor" /> Stop session
-            </button>
+            {voiceState === 'processing'
+              ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              : voiceState === 'saved'
+              ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
+              : <Mic size={18} color="white" strokeWidth={2} />
+            }
           </div>
-        )}
+
+          {/* Status text */}
+          <div className="flex-1 min-w-0 text-left">
+            {voiceState === 'saved' ? (
+              <>
+                <p className="text-[11px] font-extrabold text-success-700 uppercase tracking-wide">Saved!</p>
+                <p className="text-[13px] font-bold text-neutral-900 truncate mt-px">"{lastSavedName}"</p>
+              </>
+            ) : voiceState === 'processing' ? (
+              <p className="text-[12.5px] font-bold text-neutral-600">Parsing with AI…</p>
+            ) : isVoiceActive ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-error-500 flex-shrink-0"
+                    style={{ animation: 'chatDotBlink 1s ease-in-out infinite' }} />
+                  <p className="text-[11px] font-extrabold text-error-600 uppercase tracking-wide">
+                    Listening · {voiceSessionCount} saved
+                  </p>
+                </div>
+                <p className="text-[12px] font-medium text-neutral-700 truncate mt-px">
+                  {voiceLive || <span className="text-neutral-400">Say: name · price · qty…</span>}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-[12.5px] font-bold text-neutral-800">Start voice session</p>
+                <p className="text-[11px] font-medium text-neutral-400 mt-px">
+                  Say <span className="text-neutral-600 font-semibold">name · price · qty</span> — auto-saves each asset
+                </p>
+              </>
+            )}
+          </div>
+
+          {/* Waveform */}
+          {voiceState === 'listening' && (
+            <div className="flex items-end gap-0.5 h-5 flex-shrink-0">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="w-0.5 rounded-sm bg-error-400"
+                  style={{ height: 6, animation: `wfBounce 0.9s ease-in-out ${i * 0.12}s infinite` }} />
+              ))}
+            </div>
+          )}
+        </button>
 
         {/* ── Name field ── */}
         <div className="mb-3">

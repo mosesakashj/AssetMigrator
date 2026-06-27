@@ -7,8 +7,8 @@ import { ExportPage } from './pages/ExportPage'
 export function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-[#FDF4F9] flex justify-center">
-        <div className="w-full max-w-md relative min-h-screen overflow-hidden">
+      <div className="h-screen overflow-hidden bg-[#FDF4F9] flex justify-center">
+        <div className="w-full max-w-md relative h-full overflow-hidden">
           <Routes>
             <Route path="/" element={<AssetsListPage />} />
             <Route path="/add/step1" element={<Step1ClassifyPage />} />
